@@ -1,5 +1,6 @@
 import secrets
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import PlainTextResponse, Response
@@ -17,21 +18,21 @@ async def lifespan(app: FastAPI):
     await DBService.shutdown()
 
 
-app = FastAPI(title="Discord embed api")
+app = FastAPI(title="Discord embed api", lifespan=lifespan)
 
 
 @app.get("/")
 def index(request: Request):
-    return {"docs": str(request.base_url) + "/docs"}
+    return {"docs": str(request.base_url) + "docs"}
 
 
 class EmbedModel(BaseModel):
-    title: str = None
-    author: str = None
-    description: str = None
-    image: str = None
+    title: Optional[str] = None
+    author: Optional[str] = None
+    description: Optional[str] = None
+    image: Optional[str] = None
     isImageThumbnail: bool
-    color: Color = None
+    color: Optional[Color] = None
 
 
 @app.post("/create")
@@ -50,14 +51,14 @@ async def create(embed: EmbedModel):
             embed.description,
             embed.image,
             embed.isImageThumbnail,
-            embed.color,
+            embed.color.as_hex(),
         ),
     )
     row = await cursor.fetchone()
 
     await DBService.pool.commit()
 
-    return Embed.model_validate(dict(row))
+    return Embed.model_validate(dict(row), by_alias=True)
 
 
 def ogpTag(property: str, content: str):
@@ -77,7 +78,7 @@ async def extract(request: Request, id: str):
     if not row:
         return PlainTextResponse("404 Not found", 404)
 
-    embed = Embed.model_validate(dict(row))
+    embed = Embed.model_validate(dict(row), by_alias=True)
 
     metaTags = []
 
@@ -88,7 +89,7 @@ async def extract(request: Request, id: str):
     if embed.author:
         metaTags.append(ogpTag("author", embed.author))
         metaTags.append(
-            f'<link type="application/json+oembed" href="{request.base_url}/oembed?author={embed.author}"/>'
+            f'<link type="application/json+oembed" href="{request.base_url}oembed?author={embed.author}"/>'
         )
     if embed.color:
         metaTags.append(f'<meta name="theme-color" content="{embed.color.as_hex()}"/>')
